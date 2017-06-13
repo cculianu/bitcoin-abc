@@ -625,8 +625,8 @@ int main(int argc, char *argv[]) {
     // network-specific settings.
     // - Needs to be done before createOptionsModel.
 
-    // Check for -testnet or -regtest parameter (Params() calls are only valid
-    // after this clause)
+    // Check for -testnet / -regtest / -chain_nol parameter
+    // (Params() calls are only valid after this clause)
     try {
         SelectParams(ChainNameFromCommandLine());
     } catch (std::exception &e) {

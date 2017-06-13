@@ -25,6 +25,42 @@ static std::vector<unsigned char> GetAntiReplayCommitment() {
                                       std::end(ANTI_REPLAY_COMMITMENT));
 }
 
+/**
+ * Import BU's genesis block creation method as a quick way to get to
+ * a working nolnet definition.
+ */
+static CBlock BUCreateGenesisBlock(CScript prefix, const std::string &comment,
+                                   const CScript &genesisOutputScript,
+                                   uint32_t nTime, uint32_t nNonce,
+                                   uint32_t nBits, int32_t nVersion,
+                                   const CAmount &genesisReward) {
+    const unsigned char *pComment = (const unsigned char *)comment.c_str();
+    std::vector<unsigned char> vComment(pComment, pComment + comment.length());
+
+    CMutableTransaction txNew;
+    txNew.nVersion = 1;
+    txNew.vin.resize(1);
+    txNew.vout.resize(1);
+    txNew.vin[0].scriptSig = prefix << vComment;
+    txNew.vout[0].nValue = genesisReward;
+    txNew.vout[0].scriptPubKey = genesisOutputScript;
+
+    CBlock genesis;
+    genesis.nTime = nTime;
+    genesis.nBits = nBits;
+    genesis.nNonce = nNonce;
+    genesis.nVersion = nVersion;
+    genesis.vtx.push_back(MakeTransactionRef(std::move(txNew)));
+    genesis.hashPrevBlock.SetNull();
+    genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
+    return genesis;
+}
+
+/**
+ * Original genesis block creation method used for networks other than
+ * nolnet.
+ */
+// FIXME: Refactor code to use single genesis block creation method.
 static CBlock CreateGenesisBlock(const char *pszTimestamp,
                                  const CScript &genesisOutputScript,
                                  uint32_t nTime, uint32_t nNonce,
@@ -366,6 +402,114 @@ public:
 static CTestNetParams testNetParams;
 
 /**
+ * Nolnet (rebooted June 2017)
+ */
+class CNolNetParams : public CChainParams {
+public:
+    CNolNetParams() {
+        strNetworkID = "nol";
+
+        std::vector<unsigned char> rawScript(
+            ParseHex("76a914a123a6fdc265e1bbcf1123458891bd7af1a1b5d988ac"));
+        CScript outputScript(rawScript.begin(), rawScript.end());
+        genesis = BUCreateGenesisBlock(
+            CScript() << 0, "Big blocks FTW (for the world)", outputScript,
+            1496544271, 2301659837, 0x1d00ffff, 1, 50 * COIN);
+        consensus.hashGenesisBlock = genesis.GetHash();
+        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.BIP34Height = 0;
+        consensus.BIP34Hash = consensus.hashGenesisBlock;
+        // TODO: BU does not have BIP65Height / BIP66Height
+        // Setting to 0, but need to verify this is right.
+        consensus.BIP65Height = 0;
+        consensus.BIP66Height = 0;
+        consensus.hfStartTime = HF_START_TIME;
+        consensus.antiReplayOpReturnSunsetHeight = 530000;
+        consensus.antiReplayOpReturnCommitment = GetAntiReplayCommitment();
+        consensus.powLimit = uint256S(
+            "00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        // two weeks
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60;
+        consensus.nPowTargetSpacing = 10 * 60;
+        consensus.fPowAllowMinDifficultyBlocks = true;
+        consensus.fPowNoRetargeting = false;
+        // 95% for nolnet as per BU rebooted definition
+        // FIXME: clarify with BU whether they want to adjust this to
+        // the usual 75% for testnets, or keep as is. All clients with
+        // nolnet definitions would need to adjust if it is decided to
+        // lower the threshold.
+        consensus.nRuleChangeActivationThreshold = 1916;
+        // nPowTargetTimespan / nPowTargetSpacing
+        consensus.nMinerConfirmationWindow = 2016;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
+        // January 1, 2008
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime =
+            1199145601;
+        // December 31, 2008
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout =
+            1230767999;
+
+        // Deployment of BIP68, BIP112, and BIP113.
+        consensus.vDeployments[Consensus::DEPLOYMENT_CSV].bit = 0;
+        consensus.vDeployments[Consensus::DEPLOYMENT_CSV].nStartTime = 0;
+        consensus.vDeployments[Consensus::DEPLOYMENT_CSV].nTimeout =
+            999999999999ULL;
+
+        // The best chain should have at least this much work.
+        consensus.nMinimumChainWork = uint256S("0x00");
+
+        pchMessageStart[0] = 0xfb;
+        pchMessageStart[1] = 0xce;
+        pchMessageStart[2] = 0xc4;
+        pchMessageStart[3] = 0xe9;
+        nDefaultPort = 9333;
+        nPruneAfterHeight = 100000;
+
+        assert(consensus.hashGenesisBlock ==
+               uint256S("0000000057e31bd2066c939a63b7b8623bd0f10d8c001304bdfc1a"
+                        "7902ae6d35"));
+        assert(
+            genesis.hashMerkleRoot ==
+            uint256S("0x23e723c7e7b53d6ac8bfee6685f281a17d5be453c3ed6a43d6adbb"
+                     "90f6b3c798"));
+
+        vFixedSeeds.clear();
+        vSeeds.clear();
+        // nodes with support for servicebits filtering should be at the top
+        vSeeds.push_back(CDNSSeedData("bitcoinunlimited.info",
+                                      "nolnet-seed.bitcoinunlimited.info",
+                                      true));
+
+        // P2PKH addresses begin with B
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1, 25);
+        // P2SH  addresses begin with U
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1, 68);
+        // WIF   format begins with 2B or 2C
+        base58Prefixes[SECRET_KEY] = std::vector<unsigned char>(1, 35);
+        base58Prefixes[EXT_PUBLIC_KEY] =
+            boost::assign::list_of(0x42)(0x69)(0x67)(0x20)
+                .convert_to_container<std::vector<unsigned char>>();
+        base58Prefixes[EXT_SECRET_KEY] =
+            boost::assign::list_of(0x42)(0x6c)(0x6b)(0x73)
+                .convert_to_container<std::vector<unsigned char>>();
+
+        vFixedSeeds = std::vector<SeedSpec6>();
+
+        fMiningRequiresPeers = true;
+        fDefaultConsistencyChecks = false;
+        fRequireStandard = false;
+        fMineBlocksOnDemand = false;
+
+        checkpointData = (CCheckpointData){
+            boost::assign::map_list_of(
+                0, uint256S("00000000000000000000000000000000000000000000000000"
+                            "00000000000000")),
+        };
+    }
+};
+static CNolNetParams nolNetParams;
+
+/**
  * Regression test
  */
 class CRegTestParams : public CChainParams {
@@ -475,6 +619,8 @@ CChainParams &Params(const std::string &chain) {
         return mainParams;
     else if (chain == CBaseChainParams::TESTNET)
         return testNetParams;
+    else if (chain == CBaseChainParams::NOLNET)
+        return nolNetParams;
     else if (chain == CBaseChainParams::REGTEST)
         return regTestParams;
     else

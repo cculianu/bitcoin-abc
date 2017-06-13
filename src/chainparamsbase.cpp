@@ -12,11 +12,13 @@
 
 const std::string CBaseChainParams::MAIN = "main";
 const std::string CBaseChainParams::TESTNET = "test";
+const std::string CBaseChainParams::NOLNET = "nolnet";
 const std::string CBaseChainParams::REGTEST = "regtest";
 
 void AppendParamsHelpMessages(std::string &strUsage, bool debugHelp) {
     strUsage += HelpMessageGroup(_("Chain selection options:"));
     strUsage += HelpMessageOpt("-testnet", _("Use the test chain"));
+    strUsage += HelpMessageOpt("-chain_nol", _("Use the nolnet test chain"));
     if (debugHelp) {
         strUsage += HelpMessageOpt(
             "-regtest", "Enter regression test mode, which uses a special "
@@ -47,6 +49,18 @@ public:
 };
 static CBaseTestNetParams testNetParams;
 
+/**
+ * Nolnet
+ */
+class CBaseNolNetParams : public CBaseChainParams {
+public:
+    CBaseNolNetParams() {
+        nRPCPort = 9332;
+        strDataDir = "nol";
+    }
+};
+static CBaseNolNetParams nolNetParams;
+
 /*
  * Regression test
  */
@@ -71,6 +85,8 @@ CBaseChainParams &BaseParams(const std::string &chain) {
         return mainParams;
     else if (chain == CBaseChainParams::TESTNET)
         return testNetParams;
+    else if (chain == CBaseChainParams::NOLNET)
+        return nolNetParams;
     else if (chain == CBaseChainParams::REGTEST)
         return regTestParams;
     else
@@ -85,12 +101,14 @@ void SelectBaseParams(const std::string &chain) {
 std::string ChainNameFromCommandLine() {
     bool fRegTest = GetBoolArg("-regtest", false);
     bool fTestNet = GetBoolArg("-testnet", false);
+    bool fNolNet = GetBoolArg("-chain_nol", false);
 
-    if (fTestNet && fRegTest)
+    if (fRegTest && (fTestNet || fNolNet))
         throw std::runtime_error(
-            "Invalid combination of -regtest and -testnet.");
+            "Invalid combination of -regtest and other testnet.");
     if (fRegTest) return CBaseChainParams::REGTEST;
     if (fTestNet) return CBaseChainParams::TESTNET;
+    if (fNolNet) return CBaseChainParams::NOLNET;
     return CBaseChainParams::MAIN;
 }
 
